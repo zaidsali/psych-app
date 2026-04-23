@@ -15,7 +15,11 @@ type StoredNoteRow = {
 let tableReady = false;
 
 function hasDatabaseUrl() {
-  return Boolean(process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL);
+  return Boolean(
+    process.env.POSTGRES_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.DATABASE_URL
+  );
 }
 
 function toIso(value: Date | string) {
