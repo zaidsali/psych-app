@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Psychiatric Documentation Assistant",
+  title: "Rationale",
   description: "Clinical drafting assistant for psychiatry notes"
 };
 

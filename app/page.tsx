@@ -254,7 +254,7 @@ export default function Home() {
     return (
       <main className="authShell">
         <section className="authPanel">
-          <p className="eyebrow">Psychiatric Documentation AI Assistant</p>
+          <p className="eyebrow">Rationale</p>
           <h1>Doctor sign in</h1>
           <p className="authCopy">
             Prototype sign-in for local demos. Use de-identified test data only.
@@ -293,7 +293,7 @@ export default function Home() {
     <main className="appShell">
       <header className="topBar">
         <div>
-          <p className="eyebrow">Psychiatric Documentation AI Assistant</p>
+          <p className="eyebrow">Rationale</p>
           <h1>Structured psychiatry note drafting</h1>
         </div>
         <div className="accountBox">
