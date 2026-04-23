@@ -28,3 +28,18 @@ export type GenerateResponse = {
   note: string;
   fields: StructuredFields;
 };
+
+export type AskResponse = {
+  answer: string;
+};
+
+export type StoredNote = {
+  id: string;
+  doctorEmail: string;
+  noteType: NoteType;
+  sourceText: string;
+  generatedNote: string;
+  structuredFields: StructuredFields;
+  createdAt: string;
+  updatedAt: string;
+};

@@ -161,9 +161,8 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       return NextResponse.json(
-        { error: `OpenAI request failed: ${errorText}` },
+        { error: "OpenAI request failed. Check API key, quota, and billing." },
         { status: response.status }
       );
     }
@@ -181,8 +180,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(normalizeResponse(JSON.parse(content)));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to generate the note." },
+      { status: 500 }
+    );
   }
 }

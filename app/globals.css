@@ -30,12 +30,14 @@ body {
 
 button,
 select,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
 button,
-select {
+select,
+input {
   min-height: 40px;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
@@ -58,6 +60,11 @@ select {
   padding: 0 12px;
 }
 
+input {
+  width: 100%;
+  padding: 0 12px;
+}
+
 textarea {
   width: 100%;
   resize: vertical;
@@ -71,9 +78,41 @@ textarea {
 
 textarea:focus,
 button:focus-visible,
-select:focus {
+select:focus,
+input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(18, 106, 104, 0.16);
+}
+
+.authShell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 20px;
+}
+
+.authPanel {
+  width: min(520px, 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 24px;
+}
+
+.authPanel .primaryButton {
+  width: 100%;
+  margin: 16px 0;
+}
+
+.authCopy {
+  color: var(--muted);
+}
+
+.stackedLabel {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .appShell {
@@ -133,6 +172,23 @@ h3 {
   font-weight: 700;
 }
 
+.wideDisclaimer {
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+.accountBox {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.accountBox span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -180,6 +236,10 @@ h3 {
   font-size: 0.92rem;
 }
 
+.questionArea {
+  min-height: 84px;
+}
+
 .actionRow {
   display: flex;
   align-items: center;
@@ -208,12 +268,25 @@ h3 {
   justify-content: flex-end;
 }
 
+.answerBox {
+  margin: 12px 0 0;
+  border: 1px solid #cfe2df;
+  border-radius: 6px;
+  background: #f1faf8;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
 .errorBox {
   margin: 12px 0 0;
   border: 1px solid #efb2b2;
   border-radius: 6px;
   background: var(--danger-bg);
   padding: 10px 12px;
+  color: var(--danger);
+}
+
+.dangerButton {
   color: var(--danger);
 }
 
@@ -228,6 +301,53 @@ h3 {
 .sidePanel section + section {
   border-top: 1px solid var(--panel-border);
   padding-top: 18px;
+}
+
+.emptyState {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.notesList {
+  display: grid;
+  gap: 8px;
+}
+
+.noteListItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.noteListItem.active {
+  border-color: var(--accent);
+  background: #f1faf8;
+}
+
+.noteListItem button:first-child {
+  display: grid;
+  min-height: auto;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.noteListItem button:first-child:focus-visible {
+  box-shadow: none;
+  color: var(--accent-dark);
+}
+
+.noteListItem strong {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.noteListItem span {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .fieldRow {
@@ -337,6 +457,10 @@ h3 {
   .sidePanel {
     position: static;
   }
+
+  .accountBox {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 640px) {
@@ -358,5 +482,9 @@ h3 {
   .buttonGroup,
   .buttonGroup button {
     width: 100%;
+  }
+
+  .noteListItem {
+    grid-template-columns: 1fr;
   }
 }

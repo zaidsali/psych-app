@@ -1,8 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { detectSelfHarmChecklist } from "@/lib/selfHarm";
-import type { GenerateResponse, NoteType, StructuredFields } from "@/lib/types";
+import type {
+  AskResponse,
+  GenerateResponse,
+  NoteType,
+  StoredNote,
+  StructuredFields
+} from "@/lib/types";
 
 const noteTypes: NoteType[] = [
   "ED Psychiatry Consult",
@@ -29,18 +35,85 @@ const checklistLabels = {
   safetyPlanning: "Safety planning"
 };
 
+const notesStorageKey = "psych-doc-assistant-notes";
+const doctorStorageKey = "psych-doc-assistant-doctor";
+
+function readStoredNotes(): StoredNote[] {
+  try {
+    const raw = window.localStorage.getItem(notesStorageKey);
+    return raw ? (JSON.parse(raw) as StoredNote[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredNotes(notes: StoredNote[]) {
+  window.localStorage.setItem(notesStorageKey, JSON.stringify(notes));
+}
+
 export default function Home() {
+  const [doctorEmail, setDoctorEmail] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
   const [noteType, setNoteType] = useState<NoteType>("ED Psychiatry Consult");
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
   const [fields, setFields] = useState<StructuredFields>(emptyFields);
+  const [notes, setNotes] = useState<StoredNote[]>([]);
+  const [selectedNoteId, setSelectedNoteId] = useState("");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState("");
   const [copyLabel, setCopyLabel] = useState("Copy");
 
+  useEffect(() => {
+    const savedDoctor = window.localStorage.getItem(doctorStorageKey) || "";
+    setDoctorEmail(savedDoctor);
+    setEmailDraft(savedDoctor);
+    setNotes(readStoredNotes());
+  }, []);
+
   const trimmedInput = input.trim();
+  const trimmedOutput = output.trim();
+  const trimmedQuestion = question.trim();
   const checklist = useMemo(() => detectSelfHarmChecklist(input), [input]);
   const hasSelfHarmSignals = Object.values(checklist).some(Boolean);
+  const doctorNotes = notes
+    .filter((note) => note.doctorEmail === doctorEmail)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const selectedNote = doctorNotes.find((note) => note.id === selectedNoteId);
+
+  function signIn() {
+    const normalizedEmail = emailDraft.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      return;
+    }
+
+    window.localStorage.setItem(doctorStorageKey, normalizedEmail);
+    setDoctorEmail(normalizedEmail);
+    setSelectedNoteId("");
+  }
+
+  function signOut() {
+    window.localStorage.removeItem(doctorStorageKey);
+    setDoctorEmail("");
+    setEmailDraft("");
+    setSelectedNoteId("");
+    clearWorkspace();
+  }
+
+  function clearWorkspace() {
+    setInput("");
+    setOutput("");
+    setFields(emptyFields);
+    setQuestion("");
+    setAnswer("");
+    setError("");
+    setCopyLabel("Copy");
+    setSelectedNoteId("");
+  }
 
   async function generateNote() {
     if (!trimmedInput || isGenerating) {
@@ -73,6 +146,84 @@ export default function Home() {
     }
   }
 
+  async function askQuestion() {
+    if (!trimmedInput || !trimmedQuestion || isAsking) {
+      return;
+    }
+
+    setIsAsking(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceText: trimmedInput, question: trimmedQuestion })
+      });
+
+      const data = (await response.json()) as AskResponse & { error?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to answer question.");
+      }
+
+      setAnswer(data.answer);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to answer question.");
+    } finally {
+      setIsAsking(false);
+    }
+  }
+
+  function saveNote() {
+    if (!doctorEmail || !trimmedOutput) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const id = selectedNoteId || window.crypto.randomUUID();
+    const nextNote: StoredNote = {
+      id,
+      doctorEmail,
+      noteType,
+      sourceText: input,
+      generatedNote: output,
+      structuredFields: fields,
+      createdAt: selectedNote?.createdAt || now,
+      updatedAt: now
+    };
+    const nextNotes = [
+      nextNote,
+      ...notes.filter((note) => note.id !== id)
+    ];
+
+    setNotes(nextNotes);
+    writeStoredNotes(nextNotes);
+    setSelectedNoteId(id);
+  }
+
+  function loadNote(note: StoredNote) {
+    setSelectedNoteId(note.id);
+    setNoteType(note.noteType);
+    setInput(note.sourceText);
+    setOutput(note.generatedNote);
+    setFields(note.structuredFields);
+    setQuestion("");
+    setAnswer("");
+    setError("");
+    setCopyLabel("Copy");
+  }
+
+  function deleteNote(id: string) {
+    const nextNotes = notes.filter((note) => note.id !== id);
+    setNotes(nextNotes);
+    writeStoredNotes(nextNotes);
+
+    if (selectedNoteId === id) {
+      clearWorkspace();
+    }
+  }
+
   async function copyOutput() {
     if (!output) {
       return;
@@ -99,6 +250,45 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
+  if (!doctorEmail) {
+    return (
+      <main className="authShell">
+        <section className="authPanel">
+          <p className="eyebrow">Psychiatric Documentation AI Assistant</p>
+          <h1>Doctor sign in</h1>
+          <p className="authCopy">
+            Prototype sign-in for local demos. Use de-identified test data only.
+          </p>
+          <label className="stackedLabel">
+            Work email
+            <input
+              value={emailDraft}
+              onChange={(event) => setEmailDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  signIn();
+                }
+              }}
+              placeholder="doctor@example.org"
+              type="email"
+            />
+          </label>
+          <button
+            type="button"
+            className="primaryButton"
+            disabled={!emailDraft.trim()}
+            onClick={signIn}
+          >
+            Sign in
+          </button>
+          <p className="disclaimer">
+            Clinician review required. This tool does not provide medical advice.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="appShell">
       <header className="topBar">
@@ -106,10 +296,18 @@ export default function Home() {
           <p className="eyebrow">Psychiatric Documentation AI Assistant</p>
           <h1>Structured psychiatry note drafting</h1>
         </div>
-        <p className="disclaimer">
-          Clinician review required. This tool does not provide medical advice.
-        </p>
+        <div className="accountBox">
+          <span>{doctorEmail}</span>
+          <button type="button" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
       </header>
+
+      <p className="disclaimer wideDisclaimer">
+        Clinician review required. This tool does not provide medical advice.
+        Saved notes are stored in this browser for prototype use only.
+      </p>
 
       <section className="workspace" aria-label="Documentation workspace">
         <div className="primaryColumn">
@@ -142,17 +340,46 @@ export default function Home() {
 
             <div className="actionRow">
               <span>{input.length.toLocaleString()} characters</span>
-              <button
-                type="button"
-                className="primaryButton"
-                disabled={!trimmedInput || isGenerating}
-                onClick={generateNote}
-              >
-                {isGenerating ? "Generating..." : "Generate note"}
-              </button>
+              <div className="buttonGroup">
+                <button type="button" onClick={clearWorkspace}>
+                  New note
+                </button>
+                <button
+                  type="button"
+                  className="primaryButton"
+                  disabled={!trimmedInput || isGenerating}
+                  onClick={generateNote}
+                >
+                  {isGenerating ? "Generating..." : "Generate note"}
+                </button>
+              </div>
             </div>
 
             {error ? <p className="errorBox">{error}</p> : null}
+          </section>
+
+          <section className="panel questionPanel">
+            <div className="panelHeader">
+              <div>
+                <h2>Ask a documentation question</h2>
+                <p>Answers use only the source text above.</p>
+              </div>
+              <button
+                type="button"
+                disabled={!trimmedInput || !trimmedQuestion || isAsking}
+                onClick={askQuestion}
+              >
+                {isAsking ? "Asking..." : "Ask"}
+              </button>
+            </div>
+            <textarea
+              className="questionArea"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="Example: What suicide risk details are missing?"
+              spellCheck="true"
+            />
+            {answer ? <p className="answerBox">{answer}</p> : null}
           </section>
 
           <section className="panel outputPanel">
@@ -168,6 +395,14 @@ export default function Home() {
                 <button type="button" disabled={!output} onClick={downloadOutput}>
                   Download .txt
                 </button>
+                <button
+                  type="button"
+                  className="primaryButton"
+                  disabled={!trimmedOutput}
+                  onClick={saveNote}
+                >
+                  {selectedNoteId ? "Save changes" : "Save note"}
+                </button>
               </div>
             </div>
 
@@ -182,6 +417,36 @@ export default function Home() {
         </div>
 
         <aside className="sidePanel" aria-label="Extracted clinical fields">
+          <section>
+            <h2>Past notes</h2>
+            {doctorNotes.length === 0 ? (
+              <p className="emptyState">No saved notes for this doctor.</p>
+            ) : (
+              <div className="notesList">
+                {doctorNotes.map((note) => (
+                  <article
+                    className={
+                      note.id === selectedNoteId ? "noteListItem active" : "noteListItem"
+                    }
+                    key={note.id}
+                  >
+                    <button type="button" onClick={() => loadNote(note)}>
+                      <strong>{note.noteType}</strong>
+                      <span>{new Date(note.updatedAt).toLocaleString()}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="dangerButton"
+                      onClick={() => deleteNote(note.id)}
+                    >
+                      Delete
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
           <section>
             <h2>Extracted fields</h2>
             <Field label="SI/HI status" value={fields.siHiStatus} />
