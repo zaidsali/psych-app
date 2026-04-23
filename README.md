@@ -1,4 +1,4 @@
-# Psychiatric Documentation Assistant
+# Rationale
 
 Standalone Next.js MVP for drafting structured psychiatry notes from pasted clinical text.
 
