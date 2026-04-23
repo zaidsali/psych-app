@@ -35,21 +35,7 @@ const checklistLabels = {
   safetyPlanning: "Safety planning"
 };
 
-const notesStorageKey = "psych-doc-assistant-notes";
 const doctorStorageKey = "psych-doc-assistant-doctor";
-
-function readStoredNotes(): StoredNote[] {
-  try {
-    const raw = window.localStorage.getItem(notesStorageKey);
-    return raw ? (JSON.parse(raw) as StoredNote[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStoredNotes(notes: StoredNote[]) {
-  window.localStorage.setItem(notesStorageKey, JSON.stringify(notes));
-}
 
 export default function Home() {
   const [doctorEmail, setDoctorEmail] = useState("");
@@ -64,15 +50,27 @@ export default function Home() {
   const [answer, setAnswer] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [error, setError] = useState("");
+  const [notesError, setNotesError] = useState("");
   const [copyLabel, setCopyLabel] = useState("Copy");
 
   useEffect(() => {
     const savedDoctor = window.localStorage.getItem(doctorStorageKey) || "";
     setDoctorEmail(savedDoctor);
     setEmailDraft(savedDoctor);
-    setNotes(readStoredNotes());
   }, []);
+
+  useEffect(() => {
+    if (!doctorEmail) {
+      setNotes([]);
+      setNotesError("");
+      return;
+    }
+
+    void loadNotes(doctorEmail);
+  }, [doctorEmail]);
 
   const trimmedInput = input.trim();
   const trimmedOutput = output.trim();
@@ -111,8 +109,37 @@ export default function Home() {
     setQuestion("");
     setAnswer("");
     setError("");
+    setNotesError("");
     setCopyLabel("Copy");
     setSelectedNoteId("");
+  }
+
+  async function loadNotes(email: string) {
+    setIsLoadingNotes(true);
+    setNotesError("");
+
+    try {
+      const response = await fetch(
+        `/api/notes?doctorEmail=${encodeURIComponent(email)}`
+      );
+      const data = (await response.json()) as {
+        notes?: StoredNote[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load saved notes.");
+      }
+
+      setNotes(data.notes || []);
+    } catch (caught) {
+      setNotes([]);
+      setNotesError(
+        caught instanceof Error ? caught.message : "Failed to load saved notes."
+      );
+    } finally {
+      setIsLoadingNotes(false);
+    }
   }
 
   async function generateNote() {
@@ -175,10 +202,13 @@ export default function Home() {
     }
   }
 
-  function saveNote() {
-    if (!doctorEmail || !trimmedOutput) {
+  async function saveNote() {
+    if (!doctorEmail || !trimmedOutput || isSavingNote) {
       return;
     }
+
+    setIsSavingNote(true);
+    setNotesError("");
 
     const now = new Date().toISOString();
     const id = selectedNoteId || window.crypto.randomUUID();
@@ -192,14 +222,34 @@ export default function Home() {
       createdAt: selectedNote?.createdAt || now,
       updatedAt: now
     };
-    const nextNotes = [
-      nextNote,
-      ...notes.filter((note) => note.id !== id)
-    ];
 
-    setNotes(nextNotes);
-    writeStoredNotes(nextNotes);
-    setSelectedNoteId(id);
+    try {
+      const response = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextNote)
+      });
+      const data = (await response.json()) as {
+        note?: StoredNote;
+        error?: string;
+      };
+
+      if (!response.ok || !data.note) {
+        throw new Error(data.error || "Failed to save note.");
+      }
+
+      const nextNotes = [
+        data.note,
+        ...notes.filter((note) => note.id !== data.note?.id)
+      ];
+
+      setNotes(nextNotes);
+      setSelectedNoteId(data.note.id);
+    } catch (caught) {
+      setNotesError(caught instanceof Error ? caught.message : "Failed to save note.");
+    } finally {
+      setIsSavingNote(false);
+    }
   }
 
   function loadNote(note: StoredNote) {
@@ -214,13 +264,31 @@ export default function Home() {
     setCopyLabel("Copy");
   }
 
-  function deleteNote(id: string) {
-    const nextNotes = notes.filter((note) => note.id !== id);
-    setNotes(nextNotes);
-    writeStoredNotes(nextNotes);
+  async function deleteNote(id: string) {
+    setNotesError("");
 
-    if (selectedNoteId === id) {
-      clearWorkspace();
+    try {
+      const response = await fetch(
+        `/api/notes/${encodeURIComponent(id)}?doctorEmail=${encodeURIComponent(
+          doctorEmail
+        )}`,
+        { method: "DELETE" }
+      );
+      const data = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete note.");
+      }
+
+      setNotes(notes.filter((note) => note.id !== id));
+
+      if (selectedNoteId === id) {
+        clearWorkspace();
+      }
+    } catch (caught) {
+      setNotesError(
+        caught instanceof Error ? caught.message : "Failed to delete note."
+      );
     }
   }
 
@@ -306,7 +374,7 @@ export default function Home() {
 
       <p className="disclaimer wideDisclaimer">
         Clinician review required. This tool does not provide medical advice.
-        Saved notes are stored in this browser for prototype use only.
+        Saved notes use server storage when a database is configured.
       </p>
 
       <section className="workspace" aria-label="Documentation workspace">
@@ -398,10 +466,14 @@ export default function Home() {
                 <button
                   type="button"
                   className="primaryButton"
-                  disabled={!trimmedOutput}
+                  disabled={!trimmedOutput || isSavingNote}
                   onClick={saveNote}
                 >
-                  {selectedNoteId ? "Save changes" : "Save note"}
+                  {isSavingNote
+                    ? "Saving..."
+                    : selectedNoteId
+                      ? "Save changes"
+                      : "Save note"}
                 </button>
               </div>
             </div>
@@ -419,7 +491,10 @@ export default function Home() {
         <aside className="sidePanel" aria-label="Extracted clinical fields">
           <section>
             <h2>Past notes</h2>
-            {doctorNotes.length === 0 ? (
+            {notesError ? <p className="errorBox">{notesError}</p> : null}
+            {isLoadingNotes ? (
+              <p className="emptyState">Loading saved notes...</p>
+            ) : doctorNotes.length === 0 ? (
               <p className="emptyState">No saved notes for this doctor.</p>
             ) : (
               <div className="notesList">
