@@ -28,7 +28,7 @@ Standalone Next.js MVP for drafting structured psychiatry notes from pasted clin
    POSTGRES_URL=postgres://user:password@host:5432/database
    ```
 
-   `DATABASE_URL` also works if your provider uses that name. Without a database URL, note generation still works, but saved notes cannot load or persist on the server.
+   `DATABASE_URL` and `POSTGRES_URL_NON_POOLING` also work if your provider uses those names. Without a database URL, note generation still works, but saved notes cannot load or persist on the server.
 
 5. Start the app:
 
@@ -43,7 +43,7 @@ Standalone Next.js MVP for drafting structured psychiatry notes from pasted clin
 1. Import the GitHub repo into Vercel.
 2. Add `OPENAI_API_KEY` in Project Settings -> Environment Variables.
 3. Add a Postgres database from Vercel Storage or Neon.
-4. Make sure the database integration exposes `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, or `DATABASE_URL` to the project.
+4. Make sure the database integration exposes `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL`, or `POSTGRES_URL_NON_POOLING` to the project.
 5. Redeploy after adding environment variables.
 
 ## Privacy Notes

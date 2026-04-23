@@ -1,4 +1,5 @@
-import { sql } from "@vercel/postgres";
+import { createClient, createPool } from "@vercel/postgres";
+import type { QueryResult, QueryResultRow } from "@neondatabase/serverless";
 import type { NoteType, StoredNote, StructuredFields } from "@/lib/types";
 
 type StoredNoteRow = {
@@ -13,13 +14,52 @@ type StoredNoteRow = {
 };
 
 let tableReady = false;
+let pool: ReturnType<typeof createPool> | null = null;
+
+type SqlValue = string | number | boolean | undefined | null;
+
+function getDatabaseUrl() {
+  return (
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    ""
+  );
+}
 
 function hasDatabaseUrl() {
-  return Boolean(
-    process.env.POSTGRES_URL ||
-      process.env.POSTGRES_PRISMA_URL ||
-      process.env.DATABASE_URL
-  );
+  return Boolean(getDatabaseUrl());
+}
+
+function isPooledConnectionString(connectionString: string) {
+  return connectionString.includes("-pooler.") || connectionString.includes("localhost");
+}
+
+async function query<O extends QueryResultRow>(
+  strings: TemplateStringsArray,
+  ...values: SqlValue[]
+): Promise<QueryResult<O>> {
+  const connectionString = getDatabaseUrl();
+
+  if (!connectionString) {
+    throw new Error("Server note storage is not configured.");
+  }
+
+  if (isPooledConnectionString(connectionString)) {
+    pool ||= createPool({ connectionString });
+    return pool.sql<O>(strings, ...values);
+  }
+
+  const client = createClient({ connectionString });
+
+  await client.connect();
+
+  try {
+    return await client.sql<O>(strings, ...values);
+  } finally {
+    await client.end();
+  }
 }
 
 function toIso(value: Date | string) {
@@ -52,7 +92,7 @@ export async function ensureNotesTable() {
     return;
   }
 
-  await sql`
+  await query`
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY,
       doctor_email TEXT NOT NULL,
@@ -65,7 +105,7 @@ export async function ensureNotesTable() {
     )
   `;
 
-  await sql`
+  await query`
     CREATE INDEX IF NOT EXISTS notes_doctor_email_updated_at_idx
     ON notes (doctor_email, updated_at DESC)
   `;
@@ -76,7 +116,7 @@ export async function ensureNotesTable() {
 export async function listNotes(doctorEmail: string) {
   await ensureNotesTable();
 
-  const result = await sql<StoredNoteRow>`
+  const result = await query<StoredNoteRow>`
     SELECT
       id,
       doctor_email,
@@ -97,7 +137,7 @@ export async function listNotes(doctorEmail: string) {
 export async function upsertNote(note: StoredNote) {
   await ensureNotesTable();
 
-  const result = await sql<StoredNoteRow>`
+  const result = await query<StoredNoteRow>`
     INSERT INTO notes (
       id,
       doctor_email,
@@ -143,7 +183,7 @@ export async function upsertNote(note: StoredNote) {
 export async function deleteNote(doctorEmail: string, id: string) {
   await ensureNotesTable();
 
-  await sql`
+  await query`
     DELETE FROM notes
     WHERE doctor_email = ${doctorEmail}
       AND id = ${id}
